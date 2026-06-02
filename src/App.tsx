@@ -272,9 +272,11 @@ export default function App() {
         ticketNumber: `T-2026-${String(salesHistory.length + 1).padStart(4, '0')}`,
         timestamp: new Date().toISOString(),
         items: cartItems.map(it => ({
-          product: it.product,
+          productId: it.product.id,
+          name: it.product.name,
+          price: it.product.price,
           quantity: it.quantity,
-          subtotal: Math.round(it.product.price * it.quantity * 100) / 100
+          total: Math.round(it.product.price * it.quantity * 100) / 100
         })),
         total,
         baseImponible: Math.round((total - ivaAmount) * 100) / 100,
@@ -333,9 +335,11 @@ export default function App() {
         ticketNumber: `T-2026-${String(salesHistory.length + 1).padStart(4, '0')}`,
         timestamp: new Date().toISOString(),
         items: cartItems.map(it => ({
-          product: it.product,
+          productId: it.product.id,
+          name: it.product.name,
+          price: it.product.price,
           quantity: it.quantity,
-          subtotal: Math.round(it.product.price * it.quantity * 100) / 100
+          total: Math.round(it.product.price * it.quantity * 100) / 100
         })),
         total,
         baseImponible: Math.round((total - ivaAmount) * 100) / 100,
