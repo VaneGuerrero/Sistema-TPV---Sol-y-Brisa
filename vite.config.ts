@@ -5,6 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: '/Sistema-TPV---Sol-y-Brisa/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
