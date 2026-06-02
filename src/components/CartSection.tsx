@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CartItem } from '../types';
+import { useState } from 'react';
+import { CartItem, KitchenOrder } from '../types';
 import { formatEuro } from '../utils';
-import { Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, UserRound } from 'lucide-react';
+import { Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, UserRound, Users, ChefHat } from 'lucide-react';
 
 interface CartSectionProps {
   cartItems: CartItem[];
@@ -18,6 +19,10 @@ interface CartSectionProps {
   onClearCart: () => void;
   onProcessPayment: () => void;
   isProcessing: boolean;
+  onSendToKitchen: (notes: string) => void;
+  onOpenSplitModal: () => void;
+  activeMesaComanda?: KitchenOrder;
+  onLoadActiveMesaComanda?: (order: KitchenOrder) => void;
 }
 
 const ESPANA_TABLES = [
@@ -42,8 +47,14 @@ export default function CartSection({
   onRemoveItem,
   onClearCart,
   onProcessPayment,
-  isProcessing
+  isProcessing,
+  onSendToKitchen,
+  onOpenSplitModal,
+  activeMesaComanda,
+  onLoadActiveMesaComanda
 }: CartSectionProps) {
+  const [kitchenNotes, setKitchenNotes] = useState('');
+
   // calculate total with IVA included
   const total = cartItems.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
   
@@ -53,6 +64,12 @@ export default function CartSection({
   
   // IVA quota is 10% of base, or Total minus Base
   const ivaCuota = Math.round((total - baseImponible) * 100) / 100;
+
+  const handleSendToKitchen = () => {
+    onSendToKitchen(kitchenNotes);
+    setKitchenNotes('');
+  };
+
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -111,6 +128,26 @@ export default function CartSection({
             <p className="text-xs text-slate-400 mt-1 max-w-[200px]">
               Selecciona productos del menú de la izquierda para agregarlos al ticket.
             </p>
+
+            {activeMesaComanda && (
+              <div className="mt-5 p-3.5 border border-amber-200 bg-amber-50 rounded-xl max-w-[230px] shadow-3xs text-left">
+                <span className="text-3xs font-extrabold text-amber-800 uppercase tracking-widest block mb-1">
+                  💡 Comanda Detectada
+                </span>
+                <p className="text-4xs text-slate-500 font-medium mb-2.5 leading-normal">
+                  Hay una comanda activa en cocina ({activeMesaComanda.ticketNumber}) para {selectedMesa}.
+                </p>
+                <button
+                  id="btn-load-mesa-comanda"
+                  type="button"
+                  onClick={() => onLoadActiveMesaComanda && onLoadActiveMesaComanda(activeMesaComanda)}
+                  className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-3xs uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer shadow-3xs"
+                >
+                  <ChefHat className="w-3.5 h-3.5" />
+                  <span>Cargar Comanda</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           cartItems.map((item) => {
@@ -175,7 +212,7 @@ export default function CartSection({
       </div>
 
       {/* Ticket Breakdown & Formats */}
-      <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-3 shrink-0">
+      <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-3.5 shrink-0">
         {/* Desglose de Factura Simplificada compliant with Spain laws */}
         <div className="space-y-1.5 text-xs text-slate-600 font-sans border-b border-slate-200/80 pb-3">
           <div className="flex justify-between">
@@ -195,6 +232,43 @@ export default function CartSection({
             <span>TOTAL (IVA Incluido):</span>
             <span className="font-mono text-lg text-slate-950">{formatEuro(total)}</span>
           </div>
+        </div>
+
+        {/* Comanda de Cocina Control Block */}
+        <div className="border border-amber-200 bg-amber-50/50 rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between text-2xs font-extrabold text-amber-850 uppercase tracking-wider">
+            <span className="flex items-center gap-1.5">
+              <ChefHat className="w-3.5 h-3.5 text-amber-600" />
+              <span>Control de Cocina</span>
+            </span>
+            <span className="bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-xs text-[9px] font-black uppercase">
+              {cartItems.length} uds.
+            </span>
+          </div>
+          
+          <input
+            type="text"
+            placeholder="Anotaciones de cocina (ej. Sin sal, pimientos bien hechos...)"
+            value={kitchenNotes}
+            onChange={(e) => setKitchenNotes(e.target.value)}
+            disabled={cartItems.length === 0}
+            className="w-full px-3 py-1.5 text-xs bg-white border border-amber-250/60 rounded-lg focus:outline-none focus:border-amber-400 text-slate-700 transition-all font-sans"
+          />
+          
+          <button
+            id="btn-send-kitchen"
+            type="button"
+            disabled={cartItems.length === 0}
+            onClick={handleSendToKitchen}
+            className={`w-full py-1.5 px-3 rounded-lg font-bold text-2xs uppercase tracking-wide transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              cartItems.length === 0
+                ? 'bg-amber-100/40 text-amber-300 border border-amber-100 cursor-not-allowed'
+                : 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
+            }`}
+          >
+            <ChefHat className="w-3.5 h-3.5" />
+            <span>Enviar Comanda a Cocina</span>
+          </button>
         </div>
 
         {/* Pago Seleccionado */}
@@ -232,26 +306,43 @@ export default function CartSection({
           </div>
         </div>
 
-        {/* Confirm Payment button */}
-        <button
-          id="btn-process-payment"
-          disabled={cartItems.length === 0 || isProcessing}
-          onClick={onProcessPayment}
-          className={`w-full py-3.5 px-4 rounded-xl text-white font-bold tracking-wide transition-all duration-200 flex items-center justify-center gap-2 shadow-xs cursor-pointer ${
-            cartItems.length === 0
-              ? 'bg-slate-300 text-slate-400 cursor-not-allowed border border-slate-200'
-              : 'bg-amber-500 hover:bg-amber-600 active:scale-98 border-b-3 border-amber-700 hover:border-amber-800'
-          }`}
-        >
-          {isProcessing ? (
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <>
-              <Banknote className="w-5 h-5 shrink-0" />
-              <span>PAGAR Y GENERAR TICKET</span>
-            </>
-          )}
-        </button>
+        {/* Acciones de Cobro y Compartición */}
+        <div className="space-y-1.5">
+          <button
+            id="btn-split-bill"
+            type="button"
+            disabled={cartItems.length === 0}
+            onClick={onOpenSplitModal}
+            className={`w-full py-2 px-3 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              cartItems.length === 0
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200'
+                : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-800 shadow-3xs'
+            }`}
+          >
+            <Users className="w-4 h-4 text-indigo-600" />
+            <span>COMPARTIR / DIVIDIR CUENTA</span>
+          </button>
+
+          <button
+            id="btn-process-payment"
+            disabled={cartItems.length === 0 || isProcessing}
+            onClick={onProcessPayment}
+            className={`w-full py-3 px-4 rounded-xl text-white font-black tracking-wide transition-all duration-200 flex items-center justify-center gap-2 shadow-xs cursor-pointer ${
+              cartItems.length === 0
+                ? 'bg-slate-300 text-slate-400 cursor-not-allowed border border-slate-200'
+                : 'bg-amber-500 hover:bg-amber-600 active:scale-98 border-b-3 border-amber-700 hover:border-amber-800'
+            }`}
+          >
+            {isProcessing ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <Banknote className="w-4 h-4 shrink-0" />
+                <span>PAGAR Y GENERAR TICKET</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -57,3 +57,19 @@ export interface CashRegisterClose {
   zReportNumber: string;
 }
 
+export interface KitchenOrder {
+  id: string;
+  ticketNumber: string; // e.g., "COM-2026-0001"
+  timestamp: string;
+  mesa: string;
+  items: {
+    productId: string;
+    name: string;
+    quantity: number;
+    category: 'tapas' | 'bocadillos' | 'bebidas' | 'postres';
+  }[];
+  notes?: string;
+  status: 'pending' | 'preparing' | 'ready' | 'delivered';
+}
+
+

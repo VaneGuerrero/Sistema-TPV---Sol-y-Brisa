@@ -4,11 +4,13 @@
  */
 
 import { useState, useEffect, FormEvent } from 'react';
-import { Product, CartItem, Sale, SalesSummary, CashRegisterClose } from './types';
+import { Product, CartItem, Sale, SalesSummary, CashRegisterClose, KitchenOrder } from './types';
 import { formatEuro, formatTime, formatDate } from './utils';
 import ProductCard from './components/ProductCard';
 import CartSection from './components/CartSection';
 import CheckoutModal from './components/CheckoutModal';
+import SplitBillModal from './components/SplitBillModal';
+import KitchenTicketModal from './components/KitchenTicketModal';
 import {
   Store,
   Receipt,
@@ -31,7 +33,8 @@ import {
   Coins,
   Printer,
   Lock,
-  Scale
+  Scale,
+  ChefHat
 } from 'lucide-react';
 
 const DEFAULT_PRODUCTS: Product[] = [
@@ -71,8 +74,19 @@ export default function App() {
   const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
   
   // Application view/tab: POS mode, History dashboard, Management panel or Cashier close
-  const [currentTab, setCurrentTab] = useState<'pos' | 'history' | 'management' | 'cierre'>('pos');
+  const [currentTab, setCurrentTab] = useState<'pos' | 'cocina' | 'history' | 'management' | 'cierre'>('pos');
   
+  // Kitchen & Split bill states
+  const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([]);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [activeKitchenTicket, setActiveKitchenTicket] = useState<{
+    isOpen: boolean;
+    cartItems: CartItem[];
+    mesa: string;
+    notes: string;
+    ticketNumber: string;
+  } | null>(null);
+
   // Dialog / checkout modal
   const [activeSaleResult, setActiveSaleResult] = useState<Sale | null>(null);
   
@@ -105,7 +119,20 @@ export default function App() {
   // Load products & sales history from server on startup
   useEffect(() => {
     fetchData();
+
+    // Load kitchen orders from localStorage
+    const local = localStorage.getItem('tpv_comandas');
+    if (local) {
+      try {
+        setKitchenOrders(JSON.parse(local));
+      } catch (e) {}
+    }
   }, []);
+
+  const saveKitchenOrders = (orders: KitchenOrder[]) => {
+    setKitchenOrders(orders);
+    localStorage.setItem('tpv_comandas', JSON.stringify(orders));
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -246,6 +273,197 @@ export default function App() {
   // Clear cart
   const handleClearCart = () => {
     setCartItems([]);
+  };
+
+  // Kitchen COMANDA dispatch handler
+  const handleSendToKitchen = (notes: string) => {
+    if (cartItems.length === 0) return;
+    
+    const count = kitchenOrders.length;
+    const cookingTicketNum = `COM-2026-${String(count + 1).padStart(4, '0')}`;
+    
+    const newOrder: KitchenOrder = {
+      id: `order-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      ticketNumber: cookingTicketNum,
+      timestamp: new Date().toISOString(),
+      mesa: selectedMesa,
+      items: cartItems.map(it => ({
+        productId: it.product.id,
+        name: it.product.name,
+        quantity: it.quantity,
+        category: it.product.category
+      })),
+      notes,
+      status: 'pending'
+    };
+
+    const updated = [...kitchenOrders, newOrder];
+    saveKitchenOrders(updated);
+
+    // Open simulated ticket
+    setActiveKitchenTicket({
+      isOpen: true,
+      cartItems: [...cartItems],
+      mesa: selectedMesa,
+      notes,
+      ticketNumber: cookingTicketNum
+    });
+  };
+
+  // Close preview and clear cart
+  const handleCloseKitchenTicket = () => {
+    setActiveKitchenTicket(null);
+    setCartItems([]);
+  };
+
+  // Update preparing status
+  const handleUpdateOrderStatus = (orderId: string, nextStatus: KitchenOrder['status']) => {
+    const updated = kitchenOrders.map(order => 
+      order.id === orderId ? { ...order, status: nextStatus } : order
+    );
+    saveKitchenOrders(updated);
+  };
+
+  // Register Custom Sale for split checkout fractions
+  const handleRegisterCustomSale = async (
+    itemsToRegister: CartItem[], 
+    method: 'Efectivo' | 'Tarjeta',
+    descriptionSuffix: string = ''
+  ): Promise<Sale | null> => {
+    const totalRaw = itemsToRegister.reduce((acc, it) => acc + it.product.price * it.quantity, 0);
+    const total = Math.round(totalRaw * 100) / 100;
+    const ivaAmount = Math.round((total * 0.10 / 1.10) * 100) / 100;
+    const baseImponible = Math.round((total - ivaAmount) * 100) / 100;
+
+    const isClientOnly = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.preview.app') ||
+                         !window.location.port;
+
+    const customMesaName = `${selectedMesa} ${descriptionSuffix}`.trim();
+
+    if (isClientOnly) {
+      const newSale: Sale = {
+        id: `sale-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        ticketNumber: `T-2026-${String(salesHistory.length + 1).padStart(4, '0')}`,
+        timestamp: new Date().toISOString(),
+        items: itemsToRegister.map(it => ({
+          productId: it.product.id,
+          name: it.product.name,
+          price: it.product.price,
+          quantity: it.quantity,
+          total: Math.round(it.product.price * it.quantity * 100) / 100
+        })),
+        total,
+        baseImponible,
+        ivaAmount,
+        metodoPago: method,
+        mesa: customMesaName
+      };
+
+      const updatedSales = [newSale, ...salesHistory];
+      setSalesHistory(updatedSales);
+      localStorage.setItem('tpv_sales', JSON.stringify(updatedSales));
+      
+      return newSale;
+    }
+
+    try {
+      const response = await fetch('/api/sales', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          items: itemsToRegister,
+          metodoPago: method,
+          mesa: customMesaName
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('No se pudo procesar el pago parcial');
+      }
+
+      const registeredSale: Sale = await response.json();
+      
+      const updatedHistoryRes = await fetch('/api/sales');
+      if (updatedHistoryRes.ok) {
+        const freshHistory = await updatedHistoryRes.json();
+        setSalesHistory(freshHistory);
+        localStorage.setItem('tpv_sales', JSON.stringify(freshHistory));
+      }
+
+      return registeredSale;
+    } catch (err) {
+      console.warn('Network error processing split portion. Falling back to local model:', err);
+      // Fallback
+      const newSale: Sale = {
+        id: `sale-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        ticketNumber: `T-2026-${String(salesHistory.length + 1).padStart(4, '0')}`,
+        timestamp: new Date().toISOString(),
+        items: itemsToRegister.map(it => ({
+          productId: it.product.id,
+          name: it.product.name,
+          price: it.product.price,
+          quantity: it.quantity,
+          total: Math.round(it.product.price * it.quantity * 100) / 100
+        })),
+        total,
+        baseImponible,
+        ivaAmount,
+        metodoPago: method,
+        mesa: customMesaName
+      };
+
+      const updatedSales = [newSale, ...salesHistory];
+      setSalesHistory(updatedSales);
+      localStorage.setItem('tpv_sales', JSON.stringify(updatedSales));
+      
+      return newSale;
+    }
+  };
+
+  // Substract assigned item fractions from master session ticket
+  const handleRemoveItemsFromCart = (itemsToRemove: { productId: string; quantity: number }[]) => {
+    setCartItems(prev => {
+      return prev.map(cartItem => {
+        const itemToRemove = itemsToRemove.find(r => r.productId === cartItem.product.id);
+        if (itemToRemove) {
+          const nextQty = cartItem.quantity - itemToRemove.quantity;
+          return { ...cartItem, quantity: nextQty };
+        }
+        return cartItem;
+      }).filter(c => c.quantity > 0);
+    });
+
+    // If those item substracts were part of an active kitchen comanda, update the comanda state as settled once cart matches empty.
+    // If cart reaches zero, mark the current active comanda on this mesa as ready/delivered
+    setCartItems(current => {
+      if (current.length === 0) {
+        setKitchenOrders(prevK => prevK.map(order => 
+          (order.mesa === selectedMesa && order.status !== 'delivered') ? { ...order, status: 'delivered' } : order
+        ));
+      }
+      return current;
+    });
+  };
+
+  // Recover comanda list into cashier cart
+  const handleLoadActiveMesaComanda = (comanda: KitchenOrder) => {
+    const loadedItems: CartItem[] = [];
+    comanda.items.forEach(it => {
+      const matched = products.find(p => p.id === it.productId);
+      if (matched) {
+        loadedItems.push({
+          product: matched,
+          quantity: it.quantity
+        });
+      }
+    });
+
+    if (loadedItems.length > 0) {
+      setCartItems(loadedItems);
+    }
   };
 
   // Submit cart order to backend & register transaction
@@ -870,6 +1088,23 @@ export default function App() {
               <span>Caja Registrar TPV</span>
             </button>
             <button
+              id="tab-cocina-view"
+              onClick={() => setCurrentTab('cocina')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                currentTab === 'cocina'
+                  ? 'bg-white text-slate-800 shadow-xs'
+                  : 'text-slate-550 hover:text-slate-800 hover:bg-white/45'
+              }`}
+            >
+              <ChefHat className="w-4 h-4 text-amber-500" />
+              <span>Panel Cocina</span>
+              {kitchenOrders.filter(o => o.status !== 'delivered').length > 0 && (
+                <span className="bg-amber-500 text-white text-3xs font-black min-w-5 h-5 flex items-center justify-center rounded-full leading-none animate-bounce">
+                  {kitchenOrders.filter(o => o.status !== 'delivered').length}
+                </span>
+              )}
+            </button>
+            <button
               id="tab-management-view"
               onClick={() => setCurrentTab('management')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -1081,9 +1316,199 @@ export default function App() {
                 onClearCart={handleClearCart}
                 onProcessPayment={handleProcessPayment}
                 isProcessing={submittingOrder}
+                onSendToKitchen={handleSendToKitchen}
+                onOpenSplitModal={() => setIsSplitModalOpen(true)}
+                activeMesaComanda={kitchenOrders.find(o => o.mesa === selectedMesa && o.status !== 'delivered')}
+                onLoadActiveMesaComanda={handleLoadActiveMesaComanda}
               />
             </aside>
           </>
+        ) : currentTab === 'cocina' ? (
+          /* ========================================= */
+          /* KITCHEN DISPLAY SYSTEM (KDS) DASHBOARD     */
+          /* ========================================= */
+          <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-slate-100">
+            {/* Header banner */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <ChefHat className="w-6 h-6 text-amber-500" />
+                  <span>Pantalla de Cocina / Barra (KDS)</span>
+                </h2>
+                <p className="text-xs text-slate-550 mt-1">
+                  Módulo de preparación en tiempo real. Utiliza esta pantalla para coordinar la salida de los platos o marcas por servir.
+                </p>
+              </div>
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const confirmClear = window.confirm('¿Desea limpiar el historial de comandas archivadas?');
+                    if (confirmClear) {
+                      saveKitchenOrders([]);
+                    }
+                  }}
+                  className="px-4 py-2 bg-slate-50 border border-slate-200 font-extrabold text-slate-650 text-xs rounded-xl hover:bg-slate-250 hover:text-slate-800 transition-all flex items-center gap-2 cursor-pointer text-slate-600"
+                >
+                  Limpiar Comandas
+                </button>
+              </div>
+            </div>
+
+            {/* Grid layout for statuses columns */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+              
+              {/* Column 1: PENDING/PREPARING */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-3xs flex flex-col h-[640px] overflow-hidden">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4 shrink-0">
+                  <span className="text-xs font-black text-rose-700 bg-rose-50 px-2.5 py-1 rounded-xl uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+                    <span>En Preparación ({kitchenOrders.filter(o => o.status === 'pending' || o.status === 'preparing').length})</span>
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1 animate-fade-in">
+                  {kitchenOrders.filter(o => o.status === 'pending' || o.status === 'preparing').length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 py-16 text-center select-none">
+                      <ChefHat className="w-12 h-12 stroke-[1.25] text-slate-300 mb-2 mx-auto" />
+                      <p className="font-bold text-xs text-slate-505">Sin comandas en cola</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wide">Las comandas enviadas desde la caja aparecerán aquí.</p>
+                    </div>
+                  ) : (
+                    kitchenOrders.filter(o => o.status === 'pending' || o.status === 'preparing').map(o => (
+                      <div key={o.id} className="p-4 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl space-y-3 shadow-3xs">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-mono text-2xs font-extrabold text-slate-450 uppercase">{o.ticketNumber}</span>
+                            <span className="text-sm font-black text-slate-900 block mt-0.5">{o.mesa}</span>
+                          </div>
+                          <span className="text-3xs text-slate-500 font-mono font-bold">
+                            {new Date(o.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Items list */}
+                        <div className="border-t border-dashed border-slate-200/80 pt-2.5 space-y-1.5">
+                          {o.items.map((it, idx) => (
+                            <div key={idx} className="flex justify-between text-xs font-bold text-slate-800">
+                              <span className="text-indigo-650 bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded text-3xs font-black">{it.quantity}x</span>
+                              <span className="flex-1 pl-2 text-slate-800">{it.name}</span>
+                              <span className="text-4xs text-slate-400 font-mono self-center uppercase tracking-wider">{it.category}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Notes */}
+                        {o.notes && (
+                          <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-2xs leading-relaxed text-amber-900 font-medium">
+                            <span className="font-extrabold text-[9px] uppercase tracking-wider block text-amber-800">Notas:</span>
+                            <span className="italic font-bold">"{o.notes}"</span>
+                          </div>
+                        )}
+
+                        {/* Status action CTA */}
+                        <div className="pt-2">
+                          <button
+                            onClick={() => handleUpdateOrderStatus(o.id, 'ready')}
+                            className="w-full py-2 bg-amber-500 hover:bg-amber-600 font-black text-3xs text-white rounded-xl shadow-3xs cursor-pointer hover:border-b-2 hover:border-amber-700 uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <ChefHat className="w-3.5 h-3.5" />
+                            <span>Listo para Servir</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Column 2: READY TO SERVE */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-3xs flex flex-col h-[640px] overflow-hidden">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4 shrink-0">
+                  <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>Listo para Servir ({kitchenOrders.filter(o => o.status === 'ready').length})</span>
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                  {kitchenOrders.filter(o => o.status === 'ready').length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 py-16 text-center select-none">
+                      <ChefHat className="w-12 h-12 stroke-[1.25] text-slate-200 mb-2 mx-auto" />
+                      <p className="font-bold text-xs text-slate-400">Sin comandas listas</p>
+                      <p className="text-4xs text-slate-400 mt-0.5 uppercase tracking-wide">Los platos terminados se pasarán a cocina lista.</p>
+                    </div>
+                  ) : (
+                    kitchenOrders.filter(o => o.status === 'ready').map(o => (
+                      <div key={o.id} className="p-4 bg-emerald-50/10 border border-emerald-200 rounded-xl space-y-3 shadow-3xs">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-mono text-2xs font-extrabold text-emerald-600 block">{o.ticketNumber}</span>
+                            <span className="text-sm font-black text-slate-900 block mt-0.5">{o.mesa}</span>
+                          </div>
+                          <span className="text-3xs text-slate-500 font-mono font-bold">
+                            {new Date(o.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Items */}
+                        <div className="border-t border-dashed border-emerald-200/80 pt-2.5 space-y-1.5">
+                          {o.items.map((it, idx) => (
+                            <div key={idx} className="flex justify-between text-xs font-semibold text-slate-805">
+                              <span className="text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded text-3xs font-black">{it.quantity}x</span>
+                              <span className="flex-1 pl-2 text-slate-800 font-bold">{it.name}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Action CTA */}
+                        <div className="pt-2">
+                          <button
+                            onClick={() => handleUpdateOrderStatus(o.id, 'delivered')}
+                            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 font-black text-3xs text-white rounded-xl shadow-3xs cursor-pointer hover:border-b-2 hover:border-emerald-800 uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <span>✓ Entregar a Mesa</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Column 3: HISTORIAL DELIVERED */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-3xs flex flex-col h-[640px] overflow-hidden">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4 shrink-0">
+                  <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-xl uppercase tracking-wider">
+                    Cocina Entregada ({kitchenOrders.filter(o => o.status === 'delivered').length})
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-3.5 pr-1">
+                  {kitchenOrders.filter(o => o.status === 'delivered').length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 py-16 text-center select-none">
+                      <p className="font-bold text-xs text-slate-400">Sin comandas archivadas</p>
+                    </div>
+                  ) : (
+                    kitchenOrders.filter(o => o.status === 'delivered').slice().reverse().map(o => (
+                      <div key={o.id} className="p-3 bg-slate-50/55 border border-slate-150 rounded-xl space-y-2 text-2xs flex justify-between items-center">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-mono text-3xs text-slate-450">{o.ticketNumber} • {o.mesa}</p>
+                          <p className="text-slate-500 font-medium mt-0.5 leading-snug truncate">
+                            {o.items.map(it => `${it.quantity}x ${it.name}`).join(', ')}
+                          </p>
+                        </div>
+                        <span className="text-3xs text-emerald-700 bg-emerald-50 border border-emerald-150 rounded px-1.5 py-0.5 font-bold shrink-0">
+                          Entregada
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
         ) : currentTab === 'history' ? (
           /* ========================================= */
           /* STATISTICS & HISTORIAL REPORTING DASHBOARD */
@@ -1961,6 +2386,28 @@ export default function App() {
         <CheckoutModal
           sale={activeSaleResult}
           onClose={() => setActiveSaleResult(null)}
+        />
+      )}
+
+      {/* Split Bill Modal */}
+      <SplitBillModal
+        isOpen={isSplitModalOpen}
+        onClose={() => setIsSplitModalOpen(false)}
+        cartItems={cartItems}
+        selectedMesa={selectedMesa}
+        onRegisterCustomSale={handleRegisterCustomSale}
+        onRemoveItemsFromCart={handleRemoveItemsFromCart}
+      />
+
+      {/* Kitchen Ticket Modal */}
+      {activeKitchenTicket && (
+        <KitchenTicketModal
+          isOpen={activeKitchenTicket.isOpen}
+          onClose={handleCloseKitchenTicket}
+          cartItems={activeKitchenTicket.cartItems}
+          mesa={activeKitchenTicket.mesa}
+          notes={activeKitchenTicket.notes}
+          ticketNumber={activeKitchenTicket.ticketNumber}
         />
       )}
 
