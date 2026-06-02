@@ -34,6 +34,28 @@ import {
   Scale
 } from 'lucide-react';
 
+const DEFAULT_PRODUCTS: Product[] = [
+  { id: '1', name: 'Patatas Bravas', price: 6.50, category: 'tapas', description: 'Patatas crujientes con salsa brava ligeramente picante y alioli casero.', iconName: 'UtensilsCrossed' },
+  { id: '2', name: 'Croquetas de Jamón', price: 8.50, category: 'tapas', description: '6 croquetas cremosas de jamón ibérico de bellota.', iconName: 'Flame' },
+  { id: '3', name: 'Tortilla de Patatas', price: 4.50, category: 'tapas', description: 'Porción individual jugosa de tortilla con o sin cebolla según el día.', iconName: 'Egg' },
+  { id: '4', name: 'Calamares a la Romana', price: 9.50, category: 'tapas', description: 'Anillas de calamar fresco rebozadas al estilo tradicional con unas gotas de limón.', iconName: 'Fish' },
+  { id: '5', name: 'Tabla de Jamón y Queso', price: 14.00, category: 'tapas', description: 'Plato de Jamón Ibérico y Queso Manchego curado con picos caseros.', iconName: 'Beef' },
+  { id: '6', name: 'Ensaladilla Rusa', price: 5.50, category: 'tapas', description: 'Patata, atún, zanahoria, huevo y nuestra mayonesa de la casa.', iconName: 'Salad' },
+  { id: '7', name: 'Bocadillo de Calamares', price: 6.00, category: 'bocadillos', description: 'Pan candeal crujiente relleno de calamares dorados a la romana.', iconName: 'Sandwich' },
+  { id: '8', name: 'Bocadillo Jamón Ibérico', price: 7.50, category: 'bocadillos', description: 'Jamón ibérico, aceite de oliva virgen extra y tomate rallado.', iconName: 'Sandwich' },
+  { id: '9', name: 'Sándwich Bikini Mixto', price: 3.50, category: 'bocadillos', description: 'Sándwich clásico tostado con mantequilla, jamón york y queso fundido.', iconName: 'Sparkles' },
+  { id: '10', name: 'Pepito de Ternera', price: 8.00, category: 'bocadillos', description: 'Filete de ternera tierno con pimientos verdes fritos en pan de cristal.', iconName: 'Beef' },
+  { id: '11', name: 'Caña de Cerveza', price: 2.50, category: 'bebidas', description: 'Cerveza de grifo bien fría servida en copa clásica.', iconName: 'Beer' },
+  { id: '12', name: 'Copa de Vino Tinto', price: 3.50, category: 'bebidas', description: 'Copa de vino de la casa con Denominación de Origen Calificada Rioja.', iconName: 'Wine' },
+  { id: '13', name: 'Refresco', price: 2.80, category: 'bebidas', description: 'Lata de 33cl (Coca-Cola, Fanta Naranja/Limón, Nestea o Aquarius).', iconName: 'CupSoda' },
+  { id: '14', name: 'Agua Mineral', price: 1.85, category: 'bebidas', description: 'Botella de agua mineral de 500ml de las mejores sierras.', iconName: 'CupSoda' },
+  { id: '15', name: 'Café con Leche / Solo', price: 1.70, category: 'bebidas', description: 'Café de especialidad arábica tostado artesanalmente.', iconName: 'Coffee' },
+  { id: '16', name: 'Crema Catalana', price: 5.00, category: 'postres', description: 'Postre de crema pastelera casera con una fina capa de azúcar quemado.', iconName: 'Cookie' },
+  { id: '17', name: 'Tarta de Queso', price: 5.50, category: 'postres', description: 'Tarta horneada súper cremosa con base de galleta maria.', iconName: 'Cake' },
+  { id: '18', name: 'Churros con Chocolate', price: 4.00, category: 'postres', description: 'Ración de 4 churros artesanos recién fritos con taza de chocolate caliente.', iconName: 'Sparkles' },
+  { id: '19', name: 'Flan de Huevo Casero', price: 3.80, category: 'postres', description: 'Flan tradicional de huevo con caramelo y nata montada.', iconName: 'Cookie' }
+];
+
 export default function App() {
   // POS status
   const [products, setProducts] = useState<Product[]>([]);
@@ -88,6 +110,53 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     setErrorText(null);
+
+    // Auto check if running on static hosts
+    const isClientOnly = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.preview.app') ||
+                         !window.location.port;
+
+    if (isClientOnly) {
+      let localProdsString = localStorage.getItem('tpv_products');
+      let loadedProds: Product[] = [];
+      if (localProdsString) {
+        try {
+          loadedProds = JSON.parse(localProdsString);
+        } catch (e) {
+          loadedProds = DEFAULT_PRODUCTS;
+        }
+      } else {
+        loadedProds = DEFAULT_PRODUCTS;
+        localStorage.setItem('tpv_products', JSON.stringify(DEFAULT_PRODUCTS));
+      }
+
+      let localSalesString = localStorage.getItem('tpv_sales');
+      let loadedSales: Sale[] = [];
+      if (localSalesString) {
+        try {
+          loadedSales = JSON.parse(localSalesString);
+        } catch (e) {
+          loadedSales = [];
+        }
+      }
+
+      let localCierresString = localStorage.getItem('tpv_cierres');
+      let loadedCierres: CashRegisterClose[] = [];
+      if (localCierresString) {
+        try {
+          loadedCierres = JSON.parse(localCierresString);
+        } catch (e) {
+          loadedCierres = [];
+        }
+      }
+
+      setProducts(loadedProds);
+      setSalesHistory(loadedSales);
+      setCierresHistory(loadedCierres);
+      setLoading(false);
+      return;
+    }
+
     try {
       const [productsRes, salesRes, cierresRes] = await Promise.all([
         fetch('/api/products'),
@@ -96,7 +165,7 @@ export default function App() {
       ]);
 
       if (!productsRes.ok || !salesRes.ok || !cierresRes.ok) {
-        throw new Error('No se pudo conectar con el servidor TPV. Inténtalo de nuevo.');
+        throw new Error('API server returned error status.');
       }
 
       const productsData = await productsRes.json();
@@ -106,9 +175,36 @@ export default function App() {
       setProducts(productsData);
       setSalesHistory(salesData);
       setCierresHistory(cierresData);
+      
+      localStorage.setItem('tpv_products', JSON.stringify(productsData));
+      localStorage.setItem('tpv_sales', JSON.stringify(salesData));
+      localStorage.setItem('tpv_cierres', JSON.stringify(cierresData));
     } catch (err: any) {
-      console.error('Error fetching data:', err);
-      setErrorText(err.message || 'Error de red al establecer comunicación con el backend.');
+      console.warn('Could not load data from Node API. Falling back to LocalStorage.', err);
+      
+      let localProdsString = localStorage.getItem('tpv_products');
+      let loadedProds = DEFAULT_PRODUCTS;
+      if (localProdsString) {
+        try { loadedProds = JSON.parse(localProdsString); } catch(_) {}
+      } else {
+        localStorage.setItem('tpv_products', JSON.stringify(DEFAULT_PRODUCTS));
+      }
+
+      let localSalesString = localStorage.getItem('tpv_sales');
+      let loadedSales: Sale[] = [];
+      if (localSalesString) {
+        try { loadedSales = JSON.parse(localSalesString); } catch(_) {}
+      }
+
+      let localCierresString = localStorage.getItem('tpv_cierres');
+      let loadedCierres: CashRegisterClose[] = [];
+      if (localCierresString) {
+        try { loadedCierres = JSON.parse(localCierresString); } catch(_) {}
+      }
+
+      setProducts(loadedProds);
+      setSalesHistory(loadedSales);
+      setCierresHistory(loadedCierres);
     } finally {
       setLoading(false);
     }
@@ -162,6 +258,41 @@ export default function App() {
     setSubmittingOrder(true);
     setErrorText(null);
 
+    const rawTotal = cartItems.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
+    const total = Math.round(rawTotal * 100) / 100;
+    const ivaAmount = Math.round((total * 0.10 / 1.10) * 100) / 100;
+
+    const isClientOnly = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.preview.app') ||
+                         !window.location.port;
+
+    if (isClientOnly) {
+      const newSale: Sale = {
+        id: `sale-${Date.now()}`,
+        ticketNumber: `T-2026-${String(salesHistory.length + 1).padStart(4, '0')}`,
+        timestamp: new Date().toISOString(),
+        items: cartItems.map(it => ({
+          product: it.product,
+          quantity: it.quantity,
+          subtotal: Math.round(it.product.price * it.quantity * 100) / 100
+        })),
+        total,
+        baseImponible: Math.round((total - ivaAmount) * 100) / 100,
+        ivaAmount,
+        metodoPago: selectedPayment,
+        mesa: selectedMesa
+      };
+
+      const updatedSales = [newSale, ...salesHistory];
+      setSalesHistory(updatedSales);
+      localStorage.setItem('tpv_sales', JSON.stringify(updatedSales));
+      
+      setCartItems([]);
+      setActiveSaleResult(newSale);
+      setSubmittingOrder(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/sales', {
         method: 'POST',
@@ -193,10 +324,32 @@ export default function App() {
       if (updatedHistoryRes.ok) {
         const freshHistory = await updatedHistoryRes.json();
         setSalesHistory(freshHistory);
+        localStorage.setItem('tpv_sales', JSON.stringify(freshHistory));
       }
     } catch (err: any) {
-      console.error(err);
-      setErrorText(err.message || 'Ocurrió un error inesperado al archivar la venta.');
+      console.warn('Network error, treating order client-side locally:', err);
+      const newSale: Sale = {
+        id: `sale-${Date.now()}`,
+        ticketNumber: `T-2026-${String(salesHistory.length + 1).padStart(4, '0')}`,
+        timestamp: new Date().toISOString(),
+        items: cartItems.map(it => ({
+          product: it.product,
+          quantity: it.quantity,
+          subtotal: Math.round(it.product.price * it.quantity * 100) / 100
+        })),
+        total,
+        baseImponible: Math.round((total - ivaAmount) * 100) / 100,
+        ivaAmount,
+        metodoPago: selectedPayment,
+        mesa: selectedMesa
+      };
+
+      const updatedSales = [newSale, ...salesHistory];
+      setSalesHistory(updatedSales);
+      localStorage.setItem('tpv_sales', JSON.stringify(updatedSales));
+      
+      setCartItems([]);
+      setActiveSaleResult(newSale);
     } finally {
       setSubmittingOrder(false);
     }
@@ -208,13 +361,26 @@ export default function App() {
       return;
     }
     
+    const isClientOnly = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.preview.app') ||
+                         !window.location.port;
+
+    if (isClientOnly) {
+      setSalesHistory([]);
+      localStorage.setItem('tpv_sales', JSON.stringify([]));
+      return;
+    }
+
     try {
       const res = await fetch('/api/sales/reset', { method: 'POST' });
       if (res.ok) {
         setSalesHistory([]);
+        localStorage.setItem('tpv_sales', JSON.stringify([]));
       }
     } catch (err) {
       console.error('Error resetting sales history:', err);
+      setSalesHistory([]);
+      localStorage.setItem('tpv_sales', JSON.stringify([]));
     }
   };
 
@@ -264,6 +430,42 @@ export default function App() {
     setMgmtSuccessMsg(null);
     setMgmtErrorMsg(null);
 
+    const isClientOnly = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.preview.app') ||
+                         !window.location.port;
+
+    if (isClientOnly) {
+      let updatedProducts = [...products];
+      if (editProductId) {
+        updatedProducts = products.map(p => p.id === editProductId ? {
+          ...p,
+          name: itemName,
+          price: Math.round(parsedPrice * 100) / 100,
+          category: itemCategory,
+          description: itemDescription,
+          iconName: itemIcon
+        } : p);
+        setMgmtSuccessMsg('¡Producto actualizado correctamente en tiempo real!');
+      } else {
+        const newProd: Product = {
+          id: String(Date.now()),
+          name: itemName,
+          price: Math.round(parsedPrice * 100) / 100,
+          category: itemCategory,
+          description: itemDescription,
+          iconName: itemIcon
+        };
+        updatedProducts.push(newProd);
+        setMgmtSuccessMsg('¡Nuevo producto creado e integrado con éxito!');
+      }
+
+      setProducts(updatedProducts);
+      localStorage.setItem('tpv_products', JSON.stringify(updatedProducts));
+      handleCancelEdit();
+      setIsSavingProduct(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/products', {
         method: 'POST',
@@ -297,10 +499,37 @@ export default function App() {
       if (freshProductsRes.ok) {
         const freshProducts = await freshProductsRes.json();
         setProducts(freshProducts);
+        localStorage.setItem('tpv_products', JSON.stringify(freshProducts));
       }
     } catch (err: any) {
-      console.error(err);
-      setMgmtErrorMsg(err.message || 'Error de red al registrar el producto.');
+      console.warn('Network failed, falling back to LocalStorage for product save:', err);
+      let updatedProducts = [...products];
+      if (editProductId) {
+        updatedProducts = products.map(p => p.id === editProductId ? {
+          ...p,
+          name: itemName,
+          price: Math.round(parsedPrice * 100) / 100,
+          category: itemCategory,
+          description: itemDescription,
+          iconName: itemIcon
+        } : p);
+        setMgmtSuccessMsg('¡Producto actualizado correctamente en tiempo real! (Modo Local)');
+      } else {
+        const newProd: Product = {
+          id: String(Date.now()),
+          name: itemName,
+          price: Math.round(parsedPrice * 100) / 100,
+          category: itemCategory,
+          description: itemDescription,
+          iconName: itemIcon
+        };
+        updatedProducts.push(newProd);
+        setMgmtSuccessMsg('¡Nuevo producto creado e integrado con éxito! (Modo Local)');
+      }
+
+      setProducts(updatedProducts);
+      localStorage.setItem('tpv_products', JSON.stringify(updatedProducts));
+      handleCancelEdit();
     } finally {
       setIsSavingProduct(false);
     }
@@ -316,6 +545,19 @@ export default function App() {
 
     setMgmtSuccessMsg(null);
     setMgmtErrorMsg(null);
+
+    const isClientOnly = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.preview.app') ||
+                         !window.location.port;
+
+    if (isClientOnly) {
+      const updatedProducts = products.filter(p => p.id !== productId);
+      setProducts(updatedProducts);
+      localStorage.setItem('tpv_products', JSON.stringify(updatedProducts));
+      setCartItems(prev => prev.filter(item => item.product.id !== productId));
+      setMgmtSuccessMsg(`"${target.name}" ha sido eliminado correctamente del menú.`);
+      return;
+    }
 
     try {
       const response = await fetch(`/api/products/${productId}`, {
@@ -333,13 +575,18 @@ export default function App() {
       if (freshProductsRes.ok) {
         const freshProducts = await freshProductsRes.json();
         setProducts(freshProducts);
+        localStorage.setItem('tpv_products', JSON.stringify(freshProducts));
         
         // Also remove from cart if it was there to prevent state mismatch
         setCartItems(prev => prev.filter(item => item.product.id !== productId));
       }
     } catch (err: any) {
-      console.error(err);
-      setMgmtErrorMsg(err.message || 'Error al intentar eliminar el producto.');
+      console.warn('Network error, applying local deletion:', err);
+      const updatedProducts = products.filter(p => p.id !== productId);
+      setProducts(updatedProducts);
+      localStorage.setItem('tpv_products', JSON.stringify(updatedProducts));
+      setCartItems(prev => prev.filter(item => item.product.id !== productId));
+      setMgmtSuccessMsg(`"${target.name}" ha sido eliminado correctamente del menú (Modo Local).`);
     }
   };
 
@@ -394,6 +641,38 @@ export default function App() {
     const gap = Math.round((actualCashNum - expectedCash) * 100) / 100;
 
     setIsRecordingCierre(true);
+    const isClientOnly = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.preview.app') ||
+                         !window.location.port;
+
+    if (isClientOnly) {
+      const lastZNum = cierresHistory.length;
+      const zReportNumber = `Z-2026-${String(lastZNum + 1).padStart(4, '0')}`;
+
+      const generatedCierre: CashRegisterClose = {
+        id: `cierre-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        expectedCash,
+        actualCash: actualCashNum,
+        expectedCard,
+        gap,
+        totalSales,
+        totalIva,
+        ticketCount,
+        zReportNumber
+      };
+
+      const updatedCierres = [...cierresHistory, generatedCierre];
+      setCierresHistory(updatedCierres);
+      localStorage.setItem('tpv_cierres', JSON.stringify(updatedCierres));
+
+      setIsCajaLocked(true);
+      setZReportPrinted(generatedCierre);
+      setCierreSuccessMsg(`¡Arqueo de caja realizado con éxito! Reporte de cierre ${generatedCierre.zReportNumber} generado.`);
+      setIsRecordingCierre(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/cierres', {
         method: 'POST',
@@ -430,10 +709,34 @@ export default function App() {
       if (freshCierresRes.ok) {
         const freshCierres = await freshCierresRes.json();
         setCierresHistory(freshCierres);
+        localStorage.setItem('tpv_cierres', JSON.stringify(freshCierres));
       }
     } catch (err: any) {
-      console.error(err);
-      setCierreErrorMsg(err.message || 'Error de red al registrar el arqueo.');
+      console.warn('Network error, saving cierre locally indeed:', err);
+      // Fallback
+      const lastZNum = cierresHistory.length;
+      const zReportNumber = `Z-2026-${String(lastZNum + 1).padStart(4, '0')}`;
+
+      const generatedCierre: CashRegisterClose = {
+        id: `cierre-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        expectedCash,
+        actualCash: actualCashNum,
+        expectedCard,
+        gap,
+        totalSales,
+        totalIva,
+        ticketCount,
+        zReportNumber
+      };
+
+      const updatedCierres = [...cierresHistory, generatedCierre];
+      setCierresHistory(updatedCierres);
+      localStorage.setItem('tpv_cierres', JSON.stringify(updatedCierres));
+
+      setIsCajaLocked(true);
+      setZReportPrinted(generatedCierre);
+      setCierreSuccessMsg(`¡Arqueo de caja realizado con éxito! Reporte de cierre ${generatedCierre.zReportNumber} generado (Modo Local).`);
     } finally {
       setIsRecordingCierre(false);
     }
@@ -447,6 +750,21 @@ export default function App() {
     setCierreSuccessMsg(null);
     setCierreErrorMsg(null);
 
+    const isClientOnly = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.preview.app') ||
+                         !window.location.port;
+
+    if (isClientOnly) {
+      setCartItems([]);
+      setSalesHistory([]);
+      localStorage.setItem('tpv_sales', JSON.stringify([]));
+      setEfectivoReal('');
+      setIsCajaLocked(false);
+      setZReportPrinted(null);
+      setCierreSuccessMsg('¡Turno reiniciado! La caja ha quedado a 0.00€ lista para una nueva jornada comercial.');
+      return;
+    }
+
     try {
       const response = await fetch('/api/sales/reset', {
         method: 'POST'
@@ -459,13 +777,20 @@ export default function App() {
       // Reset local cash states
       setCartItems([]);
       setSalesHistory([]);
+      localStorage.setItem('tpv_sales', JSON.stringify([]));
       setEfectivoReal('');
       setIsCajaLocked(false);
       setZReportPrinted(null);
       setCierreSuccessMsg('¡Turno reiniciado! La caja ha quedado a 0.00€ lista para una nueva jornada comercial.');
     } catch (err: any) {
-      console.error(err);
-      setCierreErrorMsg('Error al reiniciar el turno: ' + err.message);
+      console.warn('Network error, resetting turno locally:', err);
+      setCartItems([]);
+      setSalesHistory([]);
+      localStorage.setItem('tpv_sales', JSON.stringify([]));
+      setEfectivoReal('');
+      setIsCajaLocked(false);
+      setZReportPrinted(null);
+      setCierreSuccessMsg('¡Turno reiniciado! La caja ha quedado a 0.00€ lista para una nueva jornada comercial (Modo Local).');
     }
   };
 
