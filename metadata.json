@@ -1,0 +1,6 @@
+{
+  "name": "TPV Restaurante",
+  "description": "Software de Punto de Venta (POS) para restaurantes y cafeterías en España, con cálculo de IVA del 10% de hostelería, desglose de ticket, base imponible y registro histórico.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
